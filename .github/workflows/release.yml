@@ -8,7 +8,7 @@ on:
       - 'v*.*.*'
 
 env:
-  IMAGE_NAME: ghcr.io/kitconcept/docker-stack-deploy
+  IMAGE_NAME: ghcr.io/etracksystems/docker-stack-deploy
 
 jobs:
 
@@ -50,7 +50,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v3
         with:
-          platforms: linux/amd64
+          platforms: linux/amd64, linux/arm64
           context: .
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}

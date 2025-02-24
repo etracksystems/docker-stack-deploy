@@ -13,11 +13,12 @@ login() {
 
 configure_ssh() {
   mkdir -p "${SSH_DIR}"
-  printf '%s' "UserKnownHostsFile=${KNOWN_HOSTS}" > "${SSH_DIR}/config"
+  printf '%s' "UserKnownHostsFile=${KNOWN_HOSTS}" >> "${SSH_DIR}/config"
   chmod 600 "${SSH_DIR}/config"
 }
 
 configure_ssh_key() {
+  echo "---- CONFIGURING PRIVATE KEY ------"
   printf '%s' "$REMOTE_PRIVATE_KEY" > "${SSH_KEY}"
   lastLine=$(tail -n 1 "${SSH_KEY}")
   if [ "${lastLine}" != "" ]; then
@@ -26,6 +27,7 @@ configure_ssh_key() {
   chmod 600 "${SSH_KEY}"
   eval "$(ssh-agent)"
   ssh-add "${SSH_KEY}"
+  echo "-----------------------------------"
 }
 
 configure_env_file() {
@@ -44,9 +46,19 @@ configure_env_file() {
   fi
 }
 
+configure_ssh_jumpbox() {
+  echo "---- CONFIGURING JUMPBOX -----"
+  ssh-keyscan -p "${REMOTE_PORT}" "${REMOTE_JUMPBOX}" >> "${KNOWN_HOSTS}"
+  ssh "${REMOTE_USER}"@"${REMOTE_JUMPBOX}" ssh-keyscan -p "${REMOTE_PORT}" "${REMOTE_HOST}" >> "${KNOWN_HOSTS}"
+  printf "Host %s\n    User %s\n\nHost %s\n    ProxyJump %s\n    User %s\n\n" "${REMOTE_JUMPBOX}" "${REMOTE_USER}" "${REMOTE_HOST}" "${REMOTE_JUMPBOX}" "${REMOTE_USER}" >> "${SSH_DIR}/config"
+  cat ${SSH_DIR}/config
+  echo "------------------------------"
+}
+
 configure_ssh_host() {
-  ssh-keyscan -p "${REMOTE_PORT}" "${REMOTE_HOST}" > "${KNOWN_HOSTS}"
-  chmod 600 "${KNOWN_HOSTS}"
+  if [ "${REMOTE_JUMPBOX}" = "" ]; then
+    ssh-keyscan -p "${REMOTE_PORT}" "${REMOTE_HOST}" >> "${KNOWN_HOSTS}"
+  fi
 }
 
 connect_ssh() {
@@ -137,6 +149,32 @@ if [[ -z "${STACK_NAME}" ]]; then
   exit 1
 fi
 
+# Dump env
+echo "--- ENVIRONMENT ---"
+env
+echo "-------------------"
+
+# Make required files/directories
+mkdir -p "${SSH_DIR}"
+touch "${SSH_DIR}"/config
+touch "${SSH_DIR}"/known_hosts
+chmod 0600 "${SSH_DIR}"/known_hosts
+
+if configure_ssh_key > $OUT 2>&1; then
+  echo "SSH client: Added private key"
+else
+  echo "SSH client: Private key failed"
+  exit 1
+fi
+
+# Configure SSH Jumpbox
+if [ "${REMOTE_JUMPBOX}" != "" ]; then
+  if configure_ssh_jumpbox > $OUT 2>&1; then
+    echo "SSH Jumpbox: Configured"
+  else
+    echo "SSH Jumpbox: Configuration failed"
+  fi
+fi
 
 # CONFIGURE SSH CLIENT
 if configure_ssh > $OUT 2>&1; then
@@ -146,15 +184,10 @@ else
   exit 1
 fi
 
-if configure_ssh_key > $OUT 2>&1; then
-  echo "SSH client: Added private key"
-else
-  echo "SSH client: Private key failed"
-  exit 1
-fi
 
 if configure_ssh_host > $OUT 2>&1; then
   echo "SSH remote: Keys added to ${KNOWN_HOSTS}"
+  cat "${KNOWN_HOSTS}"
 else
   echo "SSH remote: Server ${REMOTE_HOST} on port ${REMOTE_PORT} not available"
   exit 1
