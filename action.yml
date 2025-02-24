@@ -48,6 +48,9 @@ inputs:
     description: "Additional stack parameter value"
     required: false
     default: ""
+  version:
+    description: "Container version to deploy"
+    required: true
   env_file:
     description: "Additional environment variables in the format VAR_01=VALUE\nVAR_02=VALUE"
     required: false
@@ -74,3 +77,4 @@ runs:
     STACK_PARAM: ${{ inputs.stack_param }}
     ENV_FILE: ${{ inputs.env_file }}
     DEBUG: ${{ inputs.debug }}
+    VERSION: ${{ inputs.version }}
