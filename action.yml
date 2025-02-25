@@ -41,6 +41,9 @@ inputs:
   stack_file:
     description: "Path to the stack file to be used for deploy"
     required: true
+  stack_override_file:
+    description: "Path to a file used to override the stack file (optional)"
+    required: false
   stack_name:
     description: "Name of the stack to be deployed"
     required: true
@@ -73,6 +76,7 @@ runs:
     REMOTE_JUMPBOX: ${{ inputs.remote_jumpbox }}
     DEPLOY_TIMEOUT: ${{ inputs.deploy_timeout }}
     STACK_FILE: ${{ inputs.stack_file }}
+    STACK_OVERRIDE_FILE: ${{ inputs.stack_override_file }}
     STACK_NAME: ${{ inputs.stack_name }}
     STACK_PARAM: ${{ inputs.stack_param }}
     ENV_FILE: ${{ inputs.env_file }}
