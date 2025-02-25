@@ -73,7 +73,11 @@ connect_ssh() {
 }
 
 deploy() {
-  docker stack deploy --with-registry-auth -c "${STACK_FILE}" "${STACK_NAME}"
+  override=""
+  if [ "${STACK_OVERRIDE_FILE}" != "" ]; then
+    override="-c ${STACK_OVERRIDE_FILE}"
+  fi
+  docker stack deploy --with-registry-auth -c "${STACK_FILE}" "${override}" "${STACK_NAME}"
 }
 
 check_deploy() {
