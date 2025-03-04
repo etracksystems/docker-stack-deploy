@@ -73,11 +73,17 @@ connect_ssh() {
 }
 
 deploy() {
-  override=""
-  if [ "${STACK_OVERRIDE_FILE}" != "" ]; then
-    override="-c ${STACK_OVERRIDE_FILE}"
-  fi
-  docker stack deploy --with-registry-auth -c "${STACK_FILE}" "${override}" "${STACK_NAME}"
+  echo "---------------------------------------------------------------------"
+  echo "                           DEPLOYING"
+  echo "---------------------------------------------------------------------"
+  echo $DOCKER_HOST
+  echo $VERSION
+  echo "---------------------- RENDERED COMPOSE STACK -----------------------"
+  docker compose -f "${STACK_FILE}" -f "${STACK_OVERRIDE_FILE}" config | sed '/published:/ s/"//g' | sed "/^name:/d" > composer.deploy.yml
+  cat composer.deploy.yml
+  echo "---------------------------------------------------------------------"
+  cat composer.deploy.yml | docker stack deploy --with-registry-auth -c - "${STACK_NAME}"
+  echo "---------------------------------------------------------------------"
 }
 
 check_deploy() {
