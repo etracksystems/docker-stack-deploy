@@ -88,7 +88,12 @@ deploy() {
 
 check_deploy() {
   echo "Deploy: Checking status"
-  /stack-wait.sh -t "${DEPLOY_TIMEOUT}" "${STACK_NAME}"
+  skip_jobs_flag=""
+  if [ "${SKIP_JOBS}" = "1" ] || [ "${SKIP_JOBS}" = "true" ]; then
+    skip_jobs_flag="-j"
+    echo "Deploy: Skipping replicated-job services"
+  fi
+  /stack-wait.sh -t "${DEPLOY_TIMEOUT}" ${skip_jobs_flag} "${STACK_NAME}"
 }
 
 [ -z ${DEBUG+x} ] && export DEBUG="0"

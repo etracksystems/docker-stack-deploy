@@ -3,10 +3,12 @@
 # By: Brandon Mitchell <public@bmitch.net>
 # License: MIT
 # Source repo: https://github.com/sudo-bmitch/docker-stack-wait
+# Modified by: E-Track Systems to support replicated-job services
 
 set -e
 trap "{ exit 1; }" TERM INT
 opt_h=0
+opt_j=0
 opt_r=0
 opt_p=0
 opt_s=5
@@ -18,6 +20,7 @@ usage() {
   echo "  -f filter: only wait for services matching filter, may be passed multiple"
   echo "             times, see docker stack services for the filter syntax"
   echo "  -h:        this help message"
+  echo "  -j:        skip replicated-job services (one-shot jobs)"
   echo "  -n name:   only wait for specific service names, overrides any filters,"
   echo "             may be passed multiple times, do not include the stack name prefix"
   echo "  -p lines:  print last n lines of relevant service logs at end"
@@ -71,10 +74,46 @@ print_service_logs() {
   fi
 }
 
-while getopts 'f:hn:p:rs:t:' opt; do
+# Check if a service is a replicated-job (one-shot job)
+is_replicated_job() {
+  service_id=$1
+  # Check if service has ReplicatedJob mode configured
+  job_mode=$(docker service inspect --format '{{if .Spec.Mode.ReplicatedJob}}true{{end}}' "$service_id" 2>/dev/null)
+  [ "$job_mode" = "true" ]
+}
+
+# Check if a replicated-job has completed successfully
+# Docker reports jobs as "0/1 (1/1 completed)" when done
+check_job_completed() {
+  service_id=$1
+  # Get full replicas output: "0/1 (1/1 completed)"
+  replicas_full=$(docker service ls --format '{{.Replicas}}' --filter "id=$service_id")
+  
+  # Check if it contains completed status
+  if echo "$replicas_full" | grep -q "completed)"; then
+    # Extract completed count: "0/1 (1/1 completed)" -> "1" and "1"
+    completed=$(echo "$replicas_full" | sed -n 's/.*(\([0-9]*\)\/\([0-9]*\) completed).*/\1/p')
+    job_target=$(echo "$replicas_full" | sed -n 's/.*(\([0-9]*\)\/\([0-9]*\) completed).*/\2/p')
+    
+    if [ -n "$completed" ] && [ -n "$job_target" ] && [ "$completed" = "$job_target" ]; then
+      return 0  # Job completed successfully
+    fi
+  fi
+  return 1  # Job not completed
+}
+
+# Get job status for logging
+get_job_status() {
+  service_id=$1
+  replicas_full=$(docker service ls --format '{{.Replicas}}' --filter "id=$service_id")
+  echo "$replicas_full"
+}
+
+while getopts 'f:hjn:p:rs:t:' opt; do
   case $opt in
     f) opt_f="${opt_f:+${opt_f} }-f $OPTARG";;
     h) opt_h=1;;
+    j) opt_j=1;;
     n) opt_n="${opt_n:+${opt_n} } $OPTARG";;
     p) opt_p="$OPTARG";;
     r) opt_r=1;;
@@ -100,45 +139,66 @@ while [ "$stack_done" != "1" ]; do
     service_done=1
     service=$(docker service inspect --format '{{.Spec.Name}}' "$service_id")
 
-    # hardcode a "deployed" state when UpdateStatus is not defined
-    state=$(docker service inspect -f '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{else}}deployed{{end}}' "$service_id")
-
-    # check for failed update states
-    case "$state" in
-      paused|rollback_paused)
-        service_done=2
-        ;;
-      rollback_*)
-        if [ "$opt_r" = "0" ]; then
-          service_done=2
-        fi
-        ;;
-    esac
-
-    # identify/report current state
-    if [ "$service_done" != "2" ]; then
-      replicas=$(docker service ls --format '{{.Replicas}}' --filter "id=$service_id" | cut -d' ' -f1)
-      current=$(echo "$replicas" | cut -d/ -f1)
-      target=$(echo "$replicas" | cut -d/ -f2)
-      if [ "$current" != "$target" ]; then
-        # actively replicating service
-        service_done=0
-        state="replicating $replicas"
+    # Check if this is a replicated-job service
+    if is_replicated_job "$service_id"; then
+      if [ "$opt_j" = "1" ]; then
+        # Skip jobs entirely when -j flag is set
+        echo "Service $service: skipping (replicated-job)"
+        continue
       fi
-    fi
-    service_state "$service" "$state"
+      
+      # Handle job completion detection
+      if check_job_completed "$service_id"; then
+        service_done=1
+        state="completed (job)"
+      else
+        service_done=0
+        job_status=$(get_job_status "$service_id")
+        state="running (job) $job_status"
+      fi
+      service_state "$service" "$state"
+    else
+      # Original logic for regular services
+      # hardcode a "deployed" state when UpdateStatus is not defined
+      state=$(docker service inspect -f '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{else}}deployed{{end}}' "$service_id")
 
-    # check for states that indicate an update is done
-    if [ "$service_done" = "1" ]; then
+      # check for failed update states
       case "$state" in
-        deployed|completed|rollback_completed)
-          service_done=1
+        paused|rollback_paused)
+          service_done=2
           ;;
-        *)
-          # any other state is unknown, not necessarily finished
-          service_done=0
+        rollback_*)
+          if [ "$opt_r" = "0" ]; then
+            service_done=2
+          fi
           ;;
       esac
+
+      # identify/report current state
+      if [ "$service_done" != "2" ]; then
+        replicas=$(docker service ls --format '{{.Replicas}}' --filter "id=$service_id" | cut -d' ' -f1)
+        current=$(echo "$replicas" | cut -d/ -f1)
+        target=$(echo "$replicas" | cut -d/ -f2)
+        if [ "$current" != "$target" ]; then
+          # actively replicating service
+          service_done=0
+          state="replicating $replicas"
+        fi
+      fi
+      service_state "$service" "$state"
+
+      # check for states that indicate an update is done
+      if [ "$service_done" = "1" ]; then
+        case "$state" in
+          deployed|completed|rollback_completed)
+            service_done=1
+            ;;
+          *)
+            # any other state is unknown, not necessarily finished
+            service_done=0
+            ;;
+        esac
+      fi
     fi
 
     # update stack done state

@@ -33,12 +33,30 @@ GitHub Action and Docker image used to deploy a Docker stack on a Docker Swarm.
 | `remote_user` | `REMOTE_USER` | User with SSH and Docker privileges on the machine running the Docker Swarm manager node. | ✅ | |
 | `remote_private_key` | `REMOTE_PRIVATE_KEY` | Private key used for ssh authentication. | ✅ | |
 | `deploy_timeout` | `DEPLOY_TIMEOUT` | Seconds, to wait until the deploy finishes | | **600** |
+| `skip_jobs` | `SKIP_JOBS` | Skip waiting for replicated-job services (migrations, etc.) | | **0** |
 | `stack_file` | `STACK_FILE` | Path to the stack file used in the deploy. | ✅ | |
 | `stack_name` | `STACK_NAME` | Name of the stack to be deployed. | ✅ | |
 | `stack_param` | `STACK_PARAM` | Additional parameter (env var) to be passed to the stack. | | |
 | `env_file` | `ENV_FILE` | Additional environment variables to be passed to the stack. | | |
 | `debug` | `DEBUG` | Verbose logging | | **0** |
 
+
+## Replicated Job Support
+
+This action fully supports Docker Swarm's `replicated-job` mode (one-shot jobs like database migrations). Services configured with `deploy.mode: replicated-job` are automatically detected and their completion status is properly parsed from Docker's output format `0/1 (1/1 completed)`.
+
+**Options:**
+- By default, the action waits for jobs to complete just like regular services
+- Set `skip_jobs: "1"` to skip waiting for job services entirely (useful when jobs may take a long time but aren't critical to the deployment)
+
+**Example with migrations:**
+```yaml
+- name: Deploy
+  uses: etracksystems/docker-stack-deploy@v1.1.3
+  with:
+    # ... other options
+    skip_jobs: "0"  # Wait for migrations to complete (default)
+```
 
 ## Using the GitHub Action
 
