@@ -38,6 +38,10 @@ inputs:
     description: "Timeout for the deploy check (in seconds)"
     required: false
     default: "600"
+  skip_jobs:
+    description: "Skip waiting for replicated-job services (one-shot jobs like migrations)"
+    required: false
+    default: "0"
   stack_file:
     description: "Path to the stack file to be used for deploy"
     required: true
@@ -75,6 +79,7 @@ runs:
     REMOTE_PRIVATE_KEY: ${{ inputs.remote_private_key }}
     REMOTE_JUMPBOX: ${{ inputs.remote_jumpbox }}
     DEPLOY_TIMEOUT: ${{ inputs.deploy_timeout }}
+    SKIP_JOBS: ${{ inputs.skip_jobs }}
     STACK_FILE: ${{ inputs.stack_file }}
     STACK_OVERRIDE_FILE: ${{ inputs.stack_override_file }}
     STACK_NAME: ${{ inputs.stack_name }}
